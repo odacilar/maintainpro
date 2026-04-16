@@ -1,0 +1,92 @@
+version: 1.0
+
+# =============================================================================
+# MaintainPro — AWS App Runner service definition
+# Deploy target: eu-central-1  |  Runtime: Docker image from ECR
+# =============================================================================
+# App Runner uses this file when the source is an ECR image repository.
+# Secrets listed below must be created in AWS Secrets Manager BEFORE the
+# first deployment; App Runner injects them as environment variables at runtime.
+# =============================================================================
+
+runtime: docker
+
+build:
+  # Docker handles the full build — no App Runner managed-runtime build steps.
+  commands:
+    pre-build:
+      - echo "Docker image already built and pushed to ECR — no build step needed."
+
+run:
+  # Entry point matches the CMD in Dockerfile stage 3 (standalone server)
+  command: node server.js
+
+  network:
+    port: 3000
+    env: APP_PORT
+
+  env:
+    # ── Static runtime configuration ────────────────────────────────────────
+    - name: NODE_ENV
+      value: production
+
+    - name: PORT
+      value: "3000"
+
+    - name: HOSTNAME
+      value: "0.0.0.0"
+
+    - name: NEXT_TELEMETRY_DISABLED
+      value: "1"
+
+    - name: AWS_REGION
+      value: eu-central-1
+      # In production the IAM role attached to App Runner provides credentials —
+      # do NOT set AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY here.
+
+    - name: LOG_LEVEL
+      value: info
+
+    # ── Secrets from AWS Secrets Manager ────────────────────────────────────
+    # Create each secret with: aws secretsmanager create-secret --name <name>
+    # App Runner resolves these at service start and injects as env vars.
+
+    - name: DATABASE_URL
+      value: arn:aws:secretsmanager:eu-central-1:ACCOUNT_ID:secret:maintainpro/prod/database-url
+      # set via App Runner secrets
+
+    - name: NEXTAUTH_URL
+      value: arn:aws:secretsmanager:eu-central-1:ACCOUNT_ID:secret:maintainpro/prod/nextauth-url
+      # set via App Runner secrets
+
+    - name: NEXTAUTH_SECRET
+      value: arn:aws:secretsmanager:eu-central-1:ACCOUNT_ID:secret:maintainpro/prod/nextauth-secret
+      # set via App Runner secrets — generate with: openssl rand -base64 32
+
+    - name: S3_BUCKET
+      value: arn:aws:secretsmanager:eu-central-1:ACCOUNT_ID:secret:maintainpro/prod/s3-bucket
+      # set via App Runner secrets
+
+    - name: S3_PUBLIC_URL
+      value: arn:aws:secretsmanager:eu-central-1:ACCOUNT_ID:secret:maintainpro/prod/s3-public-url
+      # set via App Runner secrets
+
+    - name: SES_FROM_EMAIL
+      value: arn:aws:secretsmanager:eu-central-1:ACCOUNT_ID:secret:maintainpro/prod/ses-from-email
+      # set via App Runner secrets
+
+    - name: SES_REPLY_TO
+      value: arn:aws:secretsmanager:eu-central-1:ACCOUNT_ID:secret:maintainpro/prod/ses-reply-to
+      # set via App Runner secrets
+
+    - name: FCM_SERVER_KEY
+      value: arn:aws:secretsmanager:eu-central-1:ACCOUNT_ID:secret:maintainpro/prod/fcm-server-key
+      # set via App Runner secrets
+
+    - name: FCM_PROJECT_ID
+      value: arn:aws:secretsmanager:eu-central-1:ACCOUNT_ID:secret:maintainpro/prod/fcm-project-id
+      # set via App Runner secrets
+
+    - name: APP_URL
+      value: arn:aws:secretsmanager:eu-central-1:ACCOUNT_ID:secret:maintainpro/prod/app-url
+      # set via App Runner secrets

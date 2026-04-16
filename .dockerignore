@@ -1,0 +1,59 @@
+# =============================================================================
+# MaintainPro — .dockerignore
+# Excludes files that must not be copied into the Docker build context.
+# Keeps context small and prevents secrets from leaking into images.
+# =============================================================================
+
+# Dependencies — reinstalled inside the Docker build
+node_modules/
+
+# Next.js build artefacts — produced fresh inside the build stage
+.next/
+
+# Git history — not needed in image
+.git/
+.gitignore
+
+# Local environment files — NEVER bake secrets into an image
+.env
+.env.*
+!.env.example
+
+# Test / coverage output
+coverage/
+.nyc_output/
+
+# Test source files — not needed in runtime image
+__tests__/
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+tests/
+e2e/
+
+# Documentation (markdown) — keep README out of image
+*.md
+!prisma/**/*.md
+
+# Editor / IDE config
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Scaffold directory (pre-MVP planning artifacts)
+_scaffold/
+
+# Claude / AI tooling
+.claude/
+CLAUDE.md
+
+# OS artefacts
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+*.tmp
+*.log

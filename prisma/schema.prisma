@@ -1,0 +1,688 @@
+// MaintainPro — Prisma Schema
+// Stack: Next.js 14 (App Router) + Prisma + PostgreSQL (AWS RDS)
+//
+// Multi-tenancy: every domain table carries factoryId; isolation is enforced
+// at TWO layers (spec §16):
+//   1. Prisma middleware injects factoryId from the server-side session.
+//   2. PostgreSQL RLS policies (see prisma/rls.sql).
+//
+// NEVER bypass the middleware or read factoryId from request input.
+// NEVER write raw queries that skip RLS.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  SUPER_ADMIN
+  FACTORY_ADMIN
+  ENGINEER
+  TECHNICIAN
+}
+
+enum MachineCriticality {
+  A
+  B
+  C
+}
+
+enum MachineStatus {
+  RUNNING
+  BROKEN
+  IN_MAINTENANCE
+  DECOMMISSIONED
+}
+
+enum BreakdownStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  WAITING_PARTS
+  RESOLVED
+  CLOSED
+}
+
+enum BreakdownPriority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum BreakdownType {
+  MECHANICAL
+  ELECTRICAL
+  PNEUMATIC
+  HYDRAULIC
+  SOFTWARE
+  OTHER
+}
+
+enum StockMovementType {
+  PURCHASE_IN
+  BREAKDOWN_OUT
+  PM_OUT
+  RETURN_IN
+  ADJUSTMENT
+  SCRAP_OUT
+}
+
+enum ChecklistPeriod {
+  DAILY
+  WEEKLY
+  MONTHLY
+  SHIFT_START
+}
+
+enum ChecklistItemType {
+  YES_NO
+  MEASUREMENT
+  PHOTO
+  MULTIPLE_CHOICE
+}
+
+enum ActionStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  VERIFIED
+}
+
+enum ActionPriority {
+  URGENT
+  NORMAL
+  INFO
+}
+
+enum PmTriggerType {
+  TIME_BASED
+  COUNTER_BASED
+  BOTH
+}
+
+enum WorkOrderStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum SubscriptionPlan {
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum NotificationChannel {
+  PUSH
+  EMAIL
+  IN_APP
+  SMS
+}
+
+enum PhotoReferenceType {
+  MACHINE
+  BREAKDOWN
+  CHECKLIST_RESPONSE
+  ACTION_BEFORE
+  ACTION_AFTER
+  SPARE_PART
+}
+
+// ---------------------------------------------------------------------------
+// 1. Factory — tenant root
+// ---------------------------------------------------------------------------
+
+model Factory {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  address   String?
+  phone     String?
+  email     String?
+  timezone  String   @default("Europe/Istanbul")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscription       Subscription?
+  users              User[]
+  departments        Department[]
+  machines           Machine[]
+  spareParts         SparePart[]
+  breakdowns         Breakdown[]
+  breakdownTimelines BreakdownTimeline[]
+  checklistTemplates ChecklistTemplate[]
+  checklistRecords   ChecklistRecord[]
+  pmPlans            PmPlan[]
+  workOrders         WorkOrder[]
+  stockMovements     StockMovement[]
+  actions            Action[]
+  notifications      Notification[]
+  photos             Photo[]
+  auditLogs          AuditLog[]
+}
+
+// ---------------------------------------------------------------------------
+// 2. Subscription — one-to-one with Factory; enforces plan limits (spec §10.2)
+// ---------------------------------------------------------------------------
+
+model Subscription {
+  id               String           @id @default(cuid())
+  factoryId        String           @unique
+  plan             SubscriptionPlan
+  userLimit        Int
+  machineLimit     Int
+  storageLimitGb   Int
+  startedAt        DateTime         @default(now())
+  currentPeriodEnd DateTime
+  // "active" | "past_due" | "cancelled" — String keeps future values flexible
+  status           String           @default("active")
+
+  factory Factory @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// 3. User
+// ---------------------------------------------------------------------------
+
+model User {
+  id          String    @id @default(cuid())
+  // NULL for SUPER_ADMIN — they are platform-level, not scoped to any factory
+  factoryId   String?
+  email       String    @unique
+  passwordHash String
+  name        String
+  role        Role
+  departmentId String?
+  phone       String?
+  fcmToken    String?
+  // Map of { channel: { eventType: boolean } } — gating per-channel per-event
+  notificationPreferences Json      @default("{}")
+  // "HH:MM" in the factory's timezone
+  quietHoursStart         String?
+  quietHoursEnd           String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  lastLoginAt DateTime?
+
+  factory    Factory?    @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  // Breakdown relations — named to disambiguate reporter vs assignee
+  breakdownsReported Breakdown[]         @relation("BreakdownReporter")
+  breakdownsAssigned Breakdown[]         @relation("BreakdownAssignee")
+
+  breakdownTimelines BreakdownTimeline[]
+  stockMovements     StockMovement[]
+  checklistRecords   ChecklistRecord[]
+  actionsAssigned    Action[]            @relation("ActionAssignee")
+  actionsVerified    Action[]            @relation("ActionVerifier")
+  workOrders         WorkOrder[]
+  notifications      Notification[]
+  uploadedPhotos     Photo[]
+  auditLogs          AuditLog[]
+
+  @@index([factoryId, email])
+}
+
+// ---------------------------------------------------------------------------
+// 4. Department
+// ---------------------------------------------------------------------------
+
+model Department {
+  id          String   @id @default(cuid())
+  factoryId   String
+  name        String
+  code        String
+  description String?
+  createdAt   DateTime @default(now())
+
+  factory  Factory   @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  users    User[]
+  machines Machine[]
+
+  @@unique([factoryId, code])
+}
+
+// ---------------------------------------------------------------------------
+// 5. Machine — asset anchor; most domain tables reference this
+// ---------------------------------------------------------------------------
+
+model Machine {
+  id             String             @id @default(cuid())
+  factoryId      String
+  departmentId   String
+  code           String
+  name           String
+  line           String?
+  brand          String?
+  model          String?
+  serialNumber   String?
+  installedAt    DateTime?
+  warrantyEndsAt DateTime?
+  criticality    MachineCriticality
+  status         MachineStatus      @default(RUNNING)
+  // Random token embedded in QR code for quick-scan breakdown entry
+  qrToken        String             @unique @default(cuid())
+  notes          String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  factory    Factory    @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  // RESTRICT: must reassign machines before deleting a department
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+
+  breakdowns         Breakdown[]
+  checklistTemplates ChecklistTemplate[]
+  checklistRecords   ChecklistRecord[]
+  pmPlans            PmPlan[]
+  workOrders         WorkOrder[]
+  stockMovements     StockMovement[]
+
+  @@unique([factoryId, code])
+}
+
+// ---------------------------------------------------------------------------
+// 6. Breakdown — core workflow; governed by a strict state machine (spec §4.2)
+// State path: OPEN → ASSIGNED → IN_PROGRESS ⇄ WAITING_PARTS → RESOLVED → CLOSED
+// Every transition writes a BreakdownTimeline row.
+// ---------------------------------------------------------------------------
+
+model Breakdown {
+  id                   String            @id @default(cuid())
+  factoryId            String
+  // Format ARZ-2026-0001 — generated in application code; unique per factory
+  code                 String
+  machineId            String
+  type                 BreakdownType
+  priority             BreakdownPriority
+  reporterId           String
+  description          String            @db.Text
+  status               BreakdownStatus   @default(OPEN)
+  assigneeId           String?
+  reportedAt           DateTime          @default(now())
+  respondedAt          DateTime?
+  resolvedAt           DateTime?
+  closedAt             DateTime?
+  resolutionNotes      String?           @db.Text
+  rootCause            String?
+  isRecurring          Boolean           @default(false)
+  totalDowntimeMinutes Int?
+
+  factory  Factory @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  machine  Machine @relation(fields: [machineId], references: [id], onDelete: Restrict)
+  reporter User    @relation("BreakdownReporter", fields: [reporterId], references: [id], onDelete: Restrict)
+  assignee User?   @relation("BreakdownAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  timeline       BreakdownTimeline[]
+  stockMovements StockMovement[]
+
+  @@unique([factoryId, code])
+  @@index([factoryId, status])
+  @@index([machineId])
+}
+
+// ---------------------------------------------------------------------------
+// 7. BreakdownTimeline — immutable audit log of every status transition
+// ---------------------------------------------------------------------------
+
+model BreakdownTimeline {
+  id          String           @id @default(cuid())
+  breakdownId String
+  userId      String
+  // NULL on the initial OPEN entry — no prior status exists
+  fromStatus  BreakdownStatus?
+  toStatus    BreakdownStatus
+  note        String?          @db.Text
+  createdAt   DateTime         @default(now())
+  // Denormalised for RLS — always mirrors breakdown.factoryId
+  factoryId   String
+
+  breakdown Breakdown @relation(fields: [breakdownId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  factory   Factory   @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// 8. SparePart
+// ---------------------------------------------------------------------------
+
+model SparePart {
+  id           String   @id @default(cuid())
+  factoryId    String
+  code         String
+  name         String
+  description  String?
+  category     String
+  // e.g. "adet", "litre", "kg"
+  unit         String
+  currentStock Int      @default(0)
+  minimumStock Int
+  unitPrice    Decimal  @db.Decimal(12, 4)
+  supplier     String?
+  leadTimeDays Int?
+  location     String?
+  barcode      String?  @unique
+  photoKey     String?  // S3 object key; resolved via presigned URL in API
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  factory        Factory         @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  stockMovements StockMovement[]
+
+  @@unique([factoryId, code])
+  @@index([factoryId, currentStock])
+}
+
+// ---------------------------------------------------------------------------
+// 9. StockMovement — append-only ledger; currentStock is derived from these rows
+// ---------------------------------------------------------------------------
+
+model StockMovement {
+  id                String            @id @default(cuid())
+  factoryId         String
+  sparePartId       String
+  type              StockMovementType
+  quantity          Int
+  // Snapshot at time of movement so historical cost reports stay accurate
+  unitPriceSnapshot Decimal?          @db.Decimal(12, 4)
+  machineId         String?
+  breakdownId       String?
+  pmPlanId          String?
+  userId            String
+  note              String?           @db.Text
+  createdAt         DateTime          @default(now())
+
+  factory   Factory    @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  sparePart SparePart  @relation(fields: [sparePartId], references: [id], onDelete: Restrict)
+  machine   Machine?   @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  breakdown Breakdown? @relation(fields: [breakdownId], references: [id], onDelete: SetNull)
+  pmPlan    PmPlan?    @relation(fields: [pmPlanId], references: [id], onDelete: SetNull)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([factoryId, sparePartId])
+  @@index([breakdownId])
+}
+
+// ---------------------------------------------------------------------------
+// 10. ChecklistTemplate — autonomous-maintenance (Jishu Hozen) form definition
+// ---------------------------------------------------------------------------
+
+model ChecklistTemplate {
+  id            String          @id @default(cuid())
+  factoryId     String
+  machineId     String
+  name          String
+  period        ChecklistPeriod
+  isActive      Boolean         @default(true)
+  // Roles permitted to execute this checklist
+  assignedRoles Role[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  factory Factory          @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  // RESTRICT: deleting a machine with live templates is a data integrity error
+  machine Machine          @relation(fields: [machineId], references: [id], onDelete: Restrict)
+  items   ChecklistItem[]
+  records ChecklistRecord[]
+}
+
+// ---------------------------------------------------------------------------
+// 11. ChecklistItem — one line item inside a template
+// ---------------------------------------------------------------------------
+
+model ChecklistItem {
+  id             String            @id @default(cuid())
+  templateId     String
+  orderIndex     Int
+  title          String
+  type           ChecklistItemType
+  // For MEASUREMENT: expected value/range string; for MULTIPLE_CHOICE: encoded choices
+  referenceValue String?
+  photoRequired  Boolean           @default(false)
+  // Extra config blob, e.g. { "choices": ["OK","NOK","N/A"] }
+  meta           Json?
+
+  template  ChecklistTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  responses ItemResponse[]
+
+  @@index([templateId, orderIndex])
+}
+
+// ---------------------------------------------------------------------------
+// 12. ChecklistRecord — one execution instance of a template
+// ---------------------------------------------------------------------------
+
+model ChecklistRecord {
+  id           String    @id @default(cuid())
+  factoryId    String
+  templateId   String
+  userId       String
+  machineId    String
+  scheduledFor DateTime
+  startedAt    DateTime?
+  completedAt  DateTime?
+  // "pending" | "in_progress" | "completed" | "missed"
+  status       String    @default("pending")
+
+  factory  Factory           @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  template ChecklistTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  user     User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  machine  Machine           @relation(fields: [machineId], references: [id], onDelete: Restrict)
+
+  responses ItemResponse[]
+  actions   Action[]
+
+  @@index([factoryId, scheduledFor])
+  @@index([templateId, scheduledFor])
+}
+
+// ---------------------------------------------------------------------------
+// 13. ItemResponse — per-item answer captured during checklist execution
+// ---------------------------------------------------------------------------
+
+model ItemResponse {
+  id          String   @id @default(cuid())
+  recordId    String
+  itemId      String
+  valueBool   Boolean?
+  valueNumber Decimal? @db.Decimal(12, 4)
+  valueText   String?
+  isAbnormal  Boolean  @default(false)
+  note        String?
+  createdAt   DateTime @default(now())
+
+  record ChecklistRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  item   ChecklistItem   @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  // One Action is auto-created server-side when isAbnormal=true (§6.2 step 4)
+  action Action?
+}
+
+// ---------------------------------------------------------------------------
+// 14. Action — created automatically when a checklist item is flagged abnormal
+// Code format: OB-AKS-2026-0001 — generated in application code
+// ---------------------------------------------------------------------------
+
+model Action {
+  id             String         @id @default(cuid())
+  factoryId      String
+  code           String
+  recordId       String
+  // Unique: exactly one Action per abnormal ItemResponse
+  itemResponseId String         @unique
+  description    String         @db.Text
+  priority       ActionPriority @default(NORMAL)
+  assigneeId     String?
+  targetDate     DateTime?
+  status         ActionStatus   @default(OPEN)
+  resolutionNotes String?       @db.Text
+  verifiedById   String?
+  verifiedAt     DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  factory      Factory         @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  record       ChecklistRecord @relation(fields: [recordId], references: [id], onDelete: Restrict)
+  itemResponse ItemResponse    @relation(fields: [itemResponseId], references: [id], onDelete: Restrict)
+  assignee     User?           @relation("ActionAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  verifier     User?           @relation("ActionVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+
+  @@unique([factoryId, code])
+  @@index([factoryId, status])
+}
+
+// ---------------------------------------------------------------------------
+// 15. PmPlan — Preventive Maintenance plan definition
+// ---------------------------------------------------------------------------
+
+model PmPlan {
+  id                       String        @id @default(cuid())
+  factoryId                String
+  machineId                String
+  name                     String
+  maintenanceType          String
+  triggerType              PmTriggerType
+  intervalDays             Int?
+  intervalCounter          Int?
+  counterUnit              String?       // e.g. "hours", "cycles"
+  estimatedDurationMinutes Int?
+  // JSON array of task description strings, ordered
+  taskList                 Json
+  // JSON array of { sparePartId, quantity } for pre-execution stock check
+  requiredPartsJson        Json
+  requiredStaffCount       Int           @default(1)
+  lastExecutedAt           DateTime?
+  nextDueAt                DateTime?
+  isActive                 Boolean       @default(true)
+  createdAt                DateTime      @default(now())
+  updatedAt                DateTime      @updatedAt
+
+  factory        Factory         @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  machine        Machine         @relation(fields: [machineId], references: [id], onDelete: Restrict)
+  workOrders     WorkOrder[]
+  stockMovements StockMovement[]
+
+  @@index([factoryId, nextDueAt])
+}
+
+// ---------------------------------------------------------------------------
+// 16. WorkOrder — one scheduled execution of a PmPlan (or ad-hoc)
+// ---------------------------------------------------------------------------
+
+model WorkOrder {
+  id           String          @id @default(cuid())
+  factoryId    String
+  // Nullable: future phases may allow ad-hoc work orders not tied to a plan
+  pmPlanId     String?
+  machineId    String
+  assigneeId   String?
+  scheduledFor DateTime
+  startedAt    DateTime?
+  completedAt  DateTime?
+  status       WorkOrderStatus @default(PLANNED)
+  notes        String?         @db.Text
+  createdAt    DateTime        @default(now())
+
+  factory  Factory  @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  pmPlan   PmPlan?  @relation(fields: [pmPlanId], references: [id], onDelete: SetNull)
+  machine  Machine  @relation(fields: [machineId], references: [id], onDelete: Restrict)
+  assignee User?    @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  @@index([factoryId, scheduledFor])
+  @@index([machineId, status])
+}
+
+// ---------------------------------------------------------------------------
+// 17. Notification — fan-out across Push / Email / In-App / SMS (spec §9)
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id            String              @id @default(cuid())
+  // NULL for platform-wide super-admin notifications
+  factoryId     String?
+  userId        String
+  channel       NotificationChannel
+  eventType     String
+  title         String
+  body          String              @db.Text
+  // Polymorphic soft reference — no FK; app resolves the linked row
+  referenceType String?
+  referenceId   String?
+  readAt        DateTime?
+  sentAt        DateTime?
+  createdAt     DateTime            @default(now())
+
+  factory Factory? @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([factoryId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// 18. Photo — polymorphic S3-backed photo store
+//
+// referenceType + referenceId form a polymorphic association; there is NO
+// database-level FK on referenceId because it points to different tables
+// depending on referenceType. Application code resolves the link.
+// Named Prisma back-relations on Breakdown / Action / ItemResponse are omitted
+// for the same reason — use a plain `Photo.findMany({ where: { referenceId } })`
+// query filtered by referenceType in the service layer.
+// ---------------------------------------------------------------------------
+
+model Photo {
+  id            String             @id @default(cuid())
+  factoryId     String
+  s3Key         String             @unique
+  contentType   String
+  sizeBytes     Int
+  referenceType PhotoReferenceType
+  // Stores the id of the related row (Breakdown, Action, Machine, etc.)
+  referenceId   String
+  uploadedById  String
+  createdAt     DateTime           @default(now())
+
+  factory    Factory @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  uploadedBy User    @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([referenceType, referenceId])
+  @@index([factoryId, referenceType])
+}
+
+// ---------------------------------------------------------------------------
+// 19. AuditLog — immutable record of every significant mutation
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  factoryId   String
+  factory     Factory  @relation(fields: [factoryId], references: [id])
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  // CREATE, UPDATE, DELETE, TRANSITION, LOGIN, EXPORT
+  action      String
+  // machine, breakdown, spare_part, checklist, action, work_order, user, pm_plan
+  entityType  String
+  entityId    String?
+  entityName  String?
+  // { field: { old: x, new: y } } for UPDATE actions
+  changes     Json?
+  // additional context (IP, user-agent, etc.)
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([factoryId, createdAt])
+  @@index([entityType, entityId])
+  @@index([userId])
+}
