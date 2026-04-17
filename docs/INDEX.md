@@ -4,6 +4,14 @@ Bu dizin, her modül ve paylaşılan kütüphane için geliştirici odaklı kull
 
 ---
 
+## Genel Tanıtım
+
+| Doküman | Açıklama |
+|---------|----------|
+| [00-tanitim.md](00-tanitim.md) | Sisteme giriş kılavuzu — ürün tanımı, roller, tüm iş akışları, teknik altyapı, kurulum, test |
+
+---
+
 ## Modüller
 
 | # | Modül | Doküman | Açıklama |

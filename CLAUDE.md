@@ -1,7 +1,7 @@
 # CLAUDE.md
 
-> **Versiyon:** 1.0.0  
-> **Son güncelleme:** 2026-04-13
+> **Versiyon:** 1.1.0  
+> **Son güncelleme:** 2026-04-17
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -9,14 +9,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 | Versiyon | Tarih | Değişiklik |
 |----------|-------|------------|
+| 1.1.0 | 2026-04-17 | Production deploy + P0/P1/P2 iyileştirmeleri: AWS App Runner canlı (promaintenance.focusoda.com), QR okutma/etiket/toplu PDF, şifre sıfırlama, presigned S3 upload, EventBridge cron, FCM push handler, responsive mobil, CRON_SECRET + USE_S3 env vars. |
 | 1.0.0 | 2026-04-13 | MVP tamamlandı — Sprint 1-8 (Auth, Makine, Arıza, Yedek Parça, Otonom Bakım, Bildirim+PWA, Dashboard, Super Admin+Docker). Tüm modüller build-clean. |
 
 ## Repository status
 
-This repository is a **complete MVP**. All 8 sprints are implemented and the production build passes cleanly.
+This repository is a **production-deployed MVP**. All 8 sprints are implemented, production build passes cleanly, and the app is live at **https://promaintenance.focusoda.com**.
 
 - [MaintainPro_MVP_Spesifikasyon_v2.docx](MaintainPro_MVP_Spesifikasyon_v2.docx) — MaintainPro MVP technical spec, April 2026.
 - [docs/INDEX.md](docs/INDEX.md) — Full module-by-module usage guide and reference documentation.
+- [docs/00-tanitim.md](docs/00-tanitim.md) — Complete system walkthrough guide (Turkish).
 
 Tables carry most of the substance (data fields, state machines, permission matrix, notification rules, AWS cost sheet) — iterate `w:tbl` elements, not just paragraphs.
 
@@ -136,17 +138,30 @@ Plans are enforced by Super Admin panel and by runtime checks: Starter (5 users 
      - `src/lib/scheduler/init.ts` — initScheduler() called at server boot
      - `src/instrumentation.ts` — Next.js instrumentation hook; calls initScheduler()
      - `src/lib/events/types.ts` — added breakdown.escalated event type
-6. **[DONE + ENHANCED 2026-04-13]** Notifications + PWA (in-app notifications, SSE streaming, manifest, service worker)
+   - **[PRODUCTION CRON 2026-04-17]** AWS EventBridge Scheduler + Lambda (`maintainpro-cron`) aktif:
+     - `maintainpro-escalation` — 5 dakikada bir `/api/cron/escalation`
+     - `maintainpro-missed-checklists` — 15 dakikada bir `/api/cron/missed-checklists`
+     - `maintainpro-pm-generate` — günlük 03:00 UTC `/api/cron/pm-generate`
+6. **[DONE + ENHANCED 2026-04-17]** Notifications + PWA (in-app notifications, SSE streaming, manifest, service worker)
    - Multi-channel dispatch added: email (SMTP/SES via nodemailer) + push (FCM via firebase-admin)
    - `src/lib/services/email-service.ts` — branded HTML email template; env-flag guarded (SMTP_HOST)
    - `src/lib/services/fcm-service.ts` — firebase-admin push; env-flag guarded (FIREBASE_PROJECT_ID/CLIENT_EMAIL/PRIVATE_KEY)
    - `src/app/api/notifications/preferences/route.ts` — GET/PUT per-user channel preferences
    - `src/app/api/notifications/fcm-token/route.ts` — POST/DELETE FCM token registration
    - `src/app/(app)/bildirimler/tercihler/page.tsx` — checkbox grid UI for channel preferences
+   - `public/sw.js` — FCM push handler + notificationclick (uygulama kapalıyken de bildirim gösterir)
 7. **[DONE]** Dashboards (admin + technician, MTBF/MTTR/Pareto, cost report, Recharts)
 8. **[DONE]** Tenant + deploy (Super Admin panel, factory CRUD, subscriptions, limit enforcement, Docker)
 
 Each sprint is expected to ship a vertically working slice — finish the backend + UI + tests for a module before starting the next. Resist cross-sprint refactors during MVP.
+
+## Post-MVP enhancements (v1.1.0, 2026-04-17)
+
+- **QR workflow:** Makine detayda gerçek QR PNG + İndir butonu, yazdırılabilir etiket sayfası (`/makineler/[id]/etiket`), toplu QR PDF export (`/api/machines/qr-batch`), QR okuyucu sayfası (`/qr-okut` — html5-qrcode ile kamera tarama)
+- **Şifre sıfırlama:** `PasswordResetToken` modeli, `/api/auth/forgot-password`, `/api/auth/reset-password`, `/sifre-sifirla` sayfası, login formunda "Şifremi Unuttum" linki
+- **Presigned S3 upload:** `/api/photos/presign` + `/api/photos/confirm` — fotoğraf doğrudan S3'e yüklenir, server byte taşımaz. `photo-upload.tsx` otomatik olarak presign modunu algılar, local modda multipart'a düşer
+- **Responsive mobil:** Header butonları mobilde ikon-only, pagination sarmalı düzeltildi, arama butonu mobilde görünür, denetim kayıtları nested table scrollable
+- **Infrastructure:** CRON_SECRET (Secrets Manager), USE_S3=true, EventBridge Scheduler (3 cron), Lambda cron proxy, SES IAM izinleri, S3 CORS
 
 ## Out of scope for MVP
 
