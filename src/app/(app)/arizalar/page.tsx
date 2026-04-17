@@ -265,12 +265,12 @@ export default function ArizalarPage() {
             }
             disabled={filtered.length === 0}
           >
-            <Download className="h-4 w-4 mr-1.5" />
-            CSV İndir
+            <Download className="h-4 w-4 sm:mr-1.5" />
+            <span className="hidden sm:inline">CSV İndir</span>
           </Button>
           <Link href="/arizalar/yeni" className={buttonVariants()}>
-            <Plus className="h-4 w-4 mr-2" />
-            Arıza Bildir
+            <Plus className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Arıza Bildir</span>
           </Link>
         </div>
       </div>

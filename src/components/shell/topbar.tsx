@@ -65,7 +65,7 @@ export function Topbar({ user, onOpenSearch }: TopbarProps) {
             onClick={onOpenSearch}
             title="Ara (Ctrl+K)"
             aria-label="Ara"
-            className="hidden sm:flex h-9 items-center gap-2 rounded-md border bg-muted/50 px-3 text-sm text-muted-foreground hover:bg-muted transition-colors"
+            className="flex h-9 items-center gap-2 rounded-md border bg-muted/50 px-2 sm:px-3 text-sm text-muted-foreground hover:bg-muted transition-colors"
           >
             <Search className="h-4 w-4" />
             <span className="hidden md:inline">Ara...</span>

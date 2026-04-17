@@ -286,8 +286,8 @@ export default function ParcalarPage() {
             }
             disabled={filtered.length === 0}
           >
-            <Download className="h-4 w-4 mr-1.5" />
-            CSV İndir
+            <Download className="h-4 w-4 sm:mr-1.5" />
+            <span className="hidden sm:inline">CSV İndir</span>
           </Button>
           <Button
             variant="outline"
@@ -297,12 +297,12 @@ export default function ParcalarPage() {
               setShowBulkStockDialog(true);
             }}
           >
-            <Plus className="h-4 w-4 mr-1.5" />
-            Toplu Stok Girişi
+            <Plus className="h-4 w-4 sm:mr-1.5" />
+            <span className="hidden sm:inline">Toplu Stok Girişi</span>
           </Button>
           <Link href="/parcalar/yeni" className={buttonVariants()}>
-            <Plus className="h-4 w-4 mr-2" />
-            Parça Ekle
+            <Plus className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Parça Ekle</span>
           </Link>
         </div>
       </div>

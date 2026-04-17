@@ -165,9 +165,9 @@ function AuditRow({ log }: { log: AuditLog }) {
 
       {expanded && hasChanges && (
         <tr className="bg-muted/20">
-          <td colSpan={6} className="px-8 py-3">
-            <div className="rounded-md border border-border overflow-hidden text-xs">
-              <table className="w-full">
+          <td colSpan={6} className="px-4 sm:px-8 py-3">
+            <div className="rounded-md border border-border overflow-x-auto text-xs">
+              <table className="w-full min-w-[320px]">
                 <thead>
                   <tr className="bg-muted text-muted-foreground">
                     <th className="px-3 py-2 text-left font-medium">Alan</th>
@@ -330,8 +330,8 @@ export default function DenetimKayitlariPage() {
 
       {/* Pagination */}
       {pagination && pagination.totalPages > 1 && (
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-sm text-muted-foreground">
+          <span className="text-xs sm:text-sm">
             Toplam {pagination.total} kayıt — Sayfa {pagination.page} / {pagination.totalPages}
           </span>
           <div className="flex gap-2">

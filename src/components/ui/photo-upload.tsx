@@ -65,25 +65,77 @@ export function PhotoUpload({
     enabled: !!referenceId,
   });
 
-  // Upload mutation
+  // Upload mutation — tries presigned S3 PUT first, falls back to multipart
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
+      setUploadProgress(0);
+
+      // 1) Ask server for presigned URL
+      const presignRes = await fetch("/api/photos/presign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contentType: file.type, referenceType, referenceId }),
+      });
+      const presignData = await presignRes.json().catch(() => ({ mode: "local" }));
+
+      if (presignRes.ok && presignData.mode === "s3") {
+        // 2a) Direct S3 upload via presigned PUT
+        return new Promise<PhotoRecord>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("PUT", presignData.uploadUrl);
+          xhr.setRequestHeader("Content-Type", file.type);
+
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
+          };
+
+          xhr.onload = async () => {
+            setUploadProgress(null);
+            if (xhr.status >= 200 && xhr.status < 300) {
+              // 3) Confirm upload with server
+              const confirmRes = await fetch("/api/photos/confirm", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  key: presignData.key,
+                  contentType: file.type,
+                  sizeBytes: file.size,
+                  referenceType,
+                  referenceId,
+                }),
+              });
+              if (confirmRes.ok) {
+                resolve(await confirmRes.json());
+              } else {
+                const body = await confirmRes.json().catch(() => ({}));
+                reject(new Error(body.error ?? "Kayıt oluşturulamadı."));
+              }
+            } else {
+              reject(new Error("S3 yükleme başarısız oldu."));
+            }
+          };
+
+          xhr.onerror = () => {
+            setUploadProgress(null);
+            reject(new Error("Ağ hatası oluştu."));
+          };
+
+          xhr.send(file);
+        });
+      }
+
+      // 2b) Fallback: multipart upload through server
       const body = new FormData();
       body.append("file", file);
       body.append("referenceType", referenceType);
       body.append("referenceId", referenceId);
 
-      setUploadProgress(0);
-
-      // Use XMLHttpRequest so we can track progress
       return new Promise<PhotoRecord>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open("POST", "/api/photos/upload");
 
         xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            setUploadProgress(Math.round((e.loaded / e.total) * 100));
-          }
+          if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
         };
 
         xhr.onload = () => {
@@ -91,8 +143,8 @@ export function PhotoUpload({
           if (xhr.status === 201) {
             resolve(JSON.parse(xhr.responseText) as PhotoRecord);
           } else {
-            const body = JSON.parse(xhr.responseText ?? "{}");
-            reject(new Error(body.error ?? "Yükleme başarısız oldu."));
+            const errBody = JSON.parse(xhr.responseText ?? "{}");
+            reject(new Error(errBody.error ?? "Yükleme başarısız oldu."));
           }
         };
 
