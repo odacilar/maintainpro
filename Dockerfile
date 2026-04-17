@@ -41,6 +41,8 @@ RUN npx prisma generate
 # Build Next.js in standalone mode
 # Ensure next.config.mjs has: output: 'standalone'
 ENV NEXT_TELEMETRY_DISABLED=1
+ARG NEXT_PUBLIC_APP_URL=https://promaintenance.focusoda.com
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 RUN npm run build
 
 # ─── Stage 3: runner ──────────────────────────────────────────────────────────

@@ -83,7 +83,7 @@ export default function MakineDuzenlePage() {
       }).then(async (r) => {
         if (!r.ok) {
           const body = await r.json().catch(() => ({}));
-          throw new Error(body.message ?? "Makine güncellenemedi.");
+          throw new Error(body.message ?? body.error ?? "Makine güncellenemedi.");
         }
         return r.json();
       }),

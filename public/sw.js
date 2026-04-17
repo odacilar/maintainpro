@@ -78,6 +78,41 @@ async function enqueueOfflineMutation(request) {
 }
 
 // ---------------------------------------------------------------------------
+// FCM Push notifications (background)
+// ---------------------------------------------------------------------------
+
+self.addEventListener('push', (e) => {
+  let data = { title: 'MaintainPro', body: 'Yeni bildirim' };
+  try {
+    if (e.data) data = e.data.json();
+  } catch {
+    // Non-JSON push payload
+  }
+  const { title, body, icon, url, ...rest } = data;
+  e.waitUntil(
+    self.registration.showNotification(title || 'MaintainPro', {
+      body: body || '',
+      icon: icon || '/icons/icon-192x192.png',
+      badge: '/icons/icon-72x72.png',
+      data: { url: url || '/panel' },
+      ...rest,
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = e.notification.data?.url || '/panel';
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const existing = clients.find((c) => c.url.includes(url));
+      if (existing) return existing.focus();
+      return self.clients.openWindow(url);
+    })
+  );
+});
+
+// ---------------------------------------------------------------------------
 // Fetch handler
 // ---------------------------------------------------------------------------
 

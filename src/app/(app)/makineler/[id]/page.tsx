@@ -7,7 +7,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Edit, Trash2, QrCode } from "lucide-react";
+import { ArrowLeft, Edit, Trash2, Download, Printer } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { PhotoUpload } from "@/components/ui/photo-upload";
 import type { Machine, MachineStatus, MachineCriticality } from "@/types/machine";
@@ -187,13 +187,37 @@ export default function MakineDetayPage() {
           </CardHeader>
           <CardContent>
             <div className="flex flex-col items-center gap-3">
-              <div className="flex h-40 w-40 items-center justify-center rounded-md border-2 border-dashed border-muted-foreground/30 bg-muted/20">
-                <div className="flex flex-col items-center gap-1 text-muted-foreground">
-                  <QrCode className="h-10 w-10" />
-                  <span className="text-xs">QR Kod</span>
-                </div>
-              </div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/api/machines/${id}/qr`}
+                alt={`QR: ${machine.code}`}
+                width={160}
+                height={160}
+                className="rounded-md border"
+              />
               <p className="text-xs text-muted-foreground text-center font-mono">{machine.code}</p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const a = document.createElement("a");
+                    a.href = `/api/machines/${id}/qr`;
+                    a.download = `qr-${machine.code}.png`;
+                    a.click();
+                  }}
+                >
+                  <Download className="h-4 w-4 mr-1" />
+                  İndir
+                </Button>
+                <Link
+                  href={`/makineler/${id}/etiket`}
+                  className={buttonVariants({ variant: "outline", size: "sm" })}
+                >
+                  <Printer className="h-4 w-4 mr-1" />
+                  Etiket
+                </Link>
+              </div>
             </div>
           </CardContent>
         </Card>

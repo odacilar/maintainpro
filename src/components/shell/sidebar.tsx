@@ -21,6 +21,7 @@ import {
   FileText,
   ScrollText,
   BookOpen,
+  ScanLine,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui-store";
@@ -47,6 +48,7 @@ const mainNavItems: NavItem[] = [
   { label: "Raporlar", href: "/raporlar", icon: BarChart2, roles: ["FACTORY_ADMIN", "ENGINEER"] },
   { label: "Kullanıcılar", href: "/kullanicilar", icon: Users, roles: ["FACTORY_ADMIN"] },
   { label: "Denetim Kayıtları", href: "/denetim-kayitlari", icon: ScrollText, roles: ["FACTORY_ADMIN"] },
+  { label: "QR Okut", href: "/qr-okut", icon: ScanLine, roles: ["FACTORY_ADMIN", "ENGINEER", "TECHNICIAN"] },
   { label: "Kullanım Kılavuzu", href: "/kilavuz", icon: BookOpen, roles: ["SUPER_ADMIN", "FACTORY_ADMIN", "ENGINEER", "TECHNICIAN"] },
 ];
 

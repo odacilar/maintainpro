@@ -54,7 +54,7 @@ export default function YeniMakinePage() {
       }).then(async (r) => {
         if (!r.ok) {
           const body = await r.json().catch(() => ({}));
-          throw new Error(body.message ?? "Makine kaydedilemedi.");
+          throw new Error(body.message ?? body.error ?? "Makine kaydedilemedi.");
         }
         return r.json();
       }),

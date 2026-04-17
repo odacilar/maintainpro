@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
-import { Plus, Search, Download } from "lucide-react";
+import { Plus, Search, Download, QrCode } from "lucide-react";
 import { buttonVariants, Button } from "@/components/ui/button";
 import { exportToCSV } from "@/lib/utils/export";
 import type { Machine, Department, MachineStatus, MachineCriticality } from "@/types/machine";
@@ -71,6 +71,20 @@ export default function MakinelerPage() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h1 className="text-2xl font-semibold">Makineler</h1>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const a = document.createElement("a");
+              a.href = "/api/machines/qr-batch";
+              a.download = "makineler-qr.pdf";
+              a.click();
+            }}
+            disabled={!machines || machines.length === 0}
+          >
+            <QrCode className="h-4 w-4 mr-1.5" />
+            QR PDF
+          </Button>
           <Button
             variant="outline"
             size="sm"

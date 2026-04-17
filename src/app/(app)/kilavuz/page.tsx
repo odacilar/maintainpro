@@ -18,9 +18,7 @@ import {
   Shield,
   Key,
   Zap,
-  FileText,
   Info,
-  CheckCircle,
   ScrollText,
 } from "lucide-react";
 

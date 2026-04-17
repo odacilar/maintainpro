@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -72,6 +73,12 @@ export function LoginForm() {
       <Button type="submit" className="w-full" disabled={loading}>
         {loading ? "Giriş yapılıyor..." : "Giriş Yap"}
       </Button>
+
+      <p className="text-center">
+        <Link href="/sifre-sifirla" className="text-sm text-muted-foreground hover:text-primary">
+          Şifremi Unuttum
+        </Link>
+      </p>
     </form>
   );
 }
