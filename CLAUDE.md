@@ -1,7 +1,7 @@
 # CLAUDE.md
 
-> **Versiyon:** 1.1.0  
-> **Son güncelleme:** 2026-04-17
+> **Versiyon:** 1.1.1  
+> **Son güncelleme:** 2026-04-29
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -9,6 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 | Versiyon | Tarih | Değişiklik |
 |----------|-------|------------|
+| 1.1.1 | 2026-04-29 | Lambda `maintainpro-cron` runtime nodejs20.x → nodejs22.x (AWS Node.js 20 EOL 30 Nisan 2026). Kod değişikliği yok, sadece runtime upgrade. |
 | 1.1.0 | 2026-04-17 | Production deploy + P0/P1/P2 iyileştirmeleri: AWS App Runner canlı (promaintenance.focusoda.com), QR okutma/etiket/toplu PDF, şifre sıfırlama, presigned S3 upload, EventBridge cron, FCM push handler, responsive mobil, CRON_SECRET + USE_S3 env vars. |
 | 1.0.0 | 2026-04-13 | MVP tamamlandı — Sprint 1-8 (Auth, Makine, Arıza, Yedek Parça, Otonom Bakım, Bildirim+PWA, Dashboard, Super Admin+Docker). Tüm modüller build-clean. |
 
